@@ -17,15 +17,21 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+//
 
-// mockgen rules for generating mocks for exported interfaces (reflection mode).
-//go:generate sh -c "mockgen -package=downsample $PACKAGE/src/cmd/services/m3coordinator/downsample Downsampler,MetricsAppender,SamplesAppender | genclean -pkg $PACKAGE/src/cmd/services/m3coordinator/downsample -out $GOPATH/src/$PACKAGE/src/cmd/services/m3coordinator/downsample/downsample_mock.go"
-//go:generate sh -c "mockgen -package=block -destination=$GOPATH/src/$PACKAGE/src/query/block/block_mock.go $PACKAGE/src/query/block Block,StepIter,SeriesIter,Builder,Step"
+package models
 
-// mockgen rules for generating mocks for unexported interfaces (file mode).
-//go:generate sh -c "mockgen -package=m3ql -destination=$GOPATH/src/github.com/m3db/m3/src/query/parser/m3ql/types_mock.go -source=$GOPATH/src/github.com/m3db/m3/src/query/parser/m3ql/types.go"
+import "github.com/m3db/m3/src/x/cost"
 
-// mockgen rules for generating mocks for unexported interfaces (file mode)
-//go:generate sh -c "mockgen -package=cost -destination=$GOPATH/src/$PACKAGE/src/query/cost/cost_mock.go $PACKAGE/src/query/cost PerQueryEnforcer,PerQueryEnforcerFactory"
+// QueryContext provides all external state needed to execute and track a query. It acts as a hook back into the
+// execution engine for things like cost accounting.
+type QueryContext struct {
+	Enforcer cost.EnforcerIF
+}
 
-package mocks
+// NewQueryContext constructs a QueryContext using the given Enforcer to enforce per query limits.
+func NewQueryContext(enforcer cost.EnforcerIF) *QueryContext {
+	return &QueryContext{
+		Enforcer: enforcer,
+	}
+}

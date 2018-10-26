@@ -40,6 +40,7 @@ import (
 	"github.com/m3db/m3/src/metrics/policy"
 	"github.com/m3db/m3/src/query/api/v1/httpd"
 	m3dbcluster "github.com/m3db/m3/src/query/cluster/m3db"
+	qcost "github.com/m3db/m3/src/query/cost"
 	"github.com/m3db/m3/src/query/executor"
 	"github.com/m3db/m3/src/query/models"
 	"github.com/m3db/m3/src/query/policy/filter"
@@ -51,6 +52,7 @@ import (
 	"github.com/m3db/m3/src/query/stores/m3db"
 	tsdbRemote "github.com/m3db/m3/src/query/tsdb/remote"
 	"github.com/m3db/m3/src/query/util/logging"
+	"github.com/m3db/m3/src/x/cost"
 	"github.com/m3db/m3/src/x/serialize"
 	"github.com/m3db/m3x/clock"
 	xconfig "github.com/m3db/m3x/config"
@@ -202,7 +204,9 @@ func Run(runOpts RunOptions) {
 		defer cleanup()
 	}
 
-	engine := executor.NewEngine(backendStorage, scope.SubScope("engine"))
+	perQueryEnforcer := newPerQueryEnforcerFactory(&cfg, instrumentOptions)
+
+	engine := executor.NewEngine(backendStorage, scope.SubScope("engine"), perQueryEnforcer)
 
 	handler, err := httpd.NewHandler(backendStorage, tagOptions, downsampler, engine,
 		m3dbClusters, clusterClient, cfg, runOpts.DBConfig, scope)
@@ -282,6 +286,27 @@ func Run(runOpts RunOptions) {
 	}
 
 	logger.Info("interrupt", zap.String("cause", interruptErr.Error()))
+}
+
+func newPerQueryEnforcerFactory(cfg *config.Configuration, instrumentOptions instrument.Options) qcost.PerQueryEnforcerFactory {
+	costIops := instrumentOptions.SetMetricsScope(instrumentOptions.MetricsScope().SubScope("cost"))
+	limitMgr := cost.NewStaticLimitManager(cfg.Limits.Global.AsLimitManagerOptions().SetInstrumentOptions(costIops))
+	tracker := cost.NewTracker()
+
+	globalEnforcer := cost.NewEnforcer(limitMgr, tracker,
+		cost.NewEnforcerOptions().SetInstrumentOptions(instrumentOptions).SetCostExceededMessage("limits.global.maxFetchedDatapoints exceeded"),
+	)
+
+	localEnforcerOpts := cost.NewEnforcerOptions().SetCostExceededMessage("limits.perQuery.maxFetchedDatapoints exceeded").SetInstrumentOptions(costIops)
+	subenforcer := cost.NewEnforcer(
+		cost.NewStaticLimitManager(cfg.Limits.PerQuery.AsLimitManagerOptions()),
+		cost.NewTracker(),
+		localEnforcerOpts)
+
+	return qcost.NewPerQueryEnforcerFactory(
+		globalEnforcer,
+		subenforcer,
+		qcost.NewPerQueryEnforcerOpts(costIops))
 }
 
 // make connections to the m3db cluster(s) and generate sessions for those clusters along with the storage

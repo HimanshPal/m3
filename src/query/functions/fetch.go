@@ -88,7 +88,7 @@ func (o FetchOp) Node(controller *transform.Controller, storage storage.Storage,
 }
 
 // Execute runs the fetch node operation
-func (n *FetchNode) Execute(ctx context.Context) error {
+func (n *FetchNode) Execute(ctx context.Context, queryCtx *models.QueryContext) error {
 	timeSpec := n.timespec
 	// No need to adjust start and ends since physical plan already considers the offset, range
 	startTime := timeSpec.Start
@@ -99,6 +99,7 @@ func (n *FetchNode) Execute(ctx context.Context) error {
 		TagMatchers: n.op.Matchers,
 		Interval:    timeSpec.Step,
 	}, &storage.FetchOptions{
+		Enforcer:  queryCtx.Enforcer,
 		UseLegacy: n.useLegacy,
 	})
 	if err != nil {

@@ -26,10 +26,12 @@ import (
 
 	"github.com/m3db/m3/src/query/block"
 	"github.com/m3db/m3/src/query/executor/transform"
+	"github.com/m3db/m3/src/query/models"
 	"github.com/m3db/m3/src/query/parser"
 	"github.com/m3db/m3/src/query/storage/mock"
 	"github.com/m3db/m3/src/query/test"
 	"github.com/m3db/m3/src/query/test/executor"
+	"github.com/m3db/m3/src/x/cost"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,7 +44,9 @@ func TestFetch(t *testing.T) {
 	mockStorage := mock.NewMockStorage()
 	mockStorage.SetFetchBlocksResult(block.Result{Blocks: []block.Block{b}}, nil)
 	source := (&FetchOp{}).Node(c, mockStorage, transform.Options{})
-	err := source.Execute(context.TODO())
+	err := source.Execute(context.TODO(), &models.QueryContext{
+		Enforcer: cost.NoopEnforcer(),
+	})
 	require.NoError(t, err)
 	expected := values
 	assert.Len(t, sink.Values, 2)

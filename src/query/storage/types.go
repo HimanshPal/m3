@@ -28,6 +28,7 @@ import (
 	"github.com/m3db/m3/src/query/block"
 	"github.com/m3db/m3/src/query/models"
 	"github.com/m3db/m3/src/query/ts"
+	"github.com/m3db/m3/src/x/cost"
 	xtime "github.com/m3db/m3x/time"
 )
 
@@ -83,12 +84,14 @@ type FetchOptions struct {
 	// Limit is the maximum number of series to return.
 	Limit     int
 	UseLegacy bool
+	Enforcer  cost.EnforcerIF
 }
 
 // NewFetchOptions creates a new fetch options.
 func NewFetchOptions() *FetchOptions {
 	return &FetchOptions{
-		Limit: 0,
+		Limit:    0,
+		Enforcer: cost.NoopEnforcer(),
 	}
 }
 

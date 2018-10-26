@@ -60,3 +60,9 @@ readWorkerPoolPolicy:
 writeWorkerPoolPolicy:
   grow: false
   size: 10
+#
+#limits:
+#  perQuery:
+#    maxFetchedDatapoints: 50
+#  global:
+#    maxFetchedDatapoints: 1000
