@@ -112,6 +112,10 @@ func NoopPerQueryEnforcerFactory() PerQueryEnforcerFactory {
 	return noopEnforcerFactory
 }
 
+func NoopPerQueryEnforcer() PerQueryEnforcer {
+	return noopEnforcerFactory.New()
+}
+
 // GlobalEnforcer returns the global enforcer instance for this factory.
 func (pef *perQueryEnforcerFactory) GlobalEnforcer() *cost.Enforcer {
 	return pef.global

@@ -21,16 +21,16 @@
 
 package models
 
-import "github.com/m3db/m3/src/x/cost"
+import "github.com/m3db/m3/src/query/cost"
 
 // QueryContext provides all external state needed to execute and track a query. It acts as a hook back into the
 // execution engine for things like cost accounting.
 type QueryContext struct {
-	Enforcer cost.EnforcerIF
+	Enforcer cost.PerQueryEnforcer
 }
 
 // NewQueryContext constructs a QueryContext using the given Enforcer to enforce per query limits.
-func NewQueryContext(enforcer cost.EnforcerIF) *QueryContext {
+func NewQueryContext(enforcer cost.PerQueryEnforcer) *QueryContext {
 	return &QueryContext{
 		Enforcer: enforcer,
 	}
