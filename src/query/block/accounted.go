@@ -5,10 +5,10 @@ import "github.com/m3db/m3/src/query/cost"
 type AccountedBlock struct {
 	Block
 
-	enforcer cost.PerQueryEnforcer
+	enforcer *cost.ChainedEnforcer
 }
 
-func NewAccountedBlock(wrapped Block, enforcer cost.PerQueryEnforcer) *AccountedBlock {
+func NewAccountedBlock(wrapped Block, enforcer *cost.ChainedEnforcer) *AccountedBlock {
 	return &AccountedBlock{
 		Block:    wrapped,
 		enforcer: enforcer,

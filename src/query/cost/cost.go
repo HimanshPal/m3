@@ -61,8 +61,8 @@ func (pe *PerQueryEnforcerOpts) DatapointsDistroBuckets() tally.Buckets {
 // perQueryEnforcerFactory constructs PerQueryEnforcer instances with a shared global enforcer and independent
 // local enforcers.
 type perQueryEnforcerFactory struct {
-	global *cost.Enforcer
-	local  *cost.Enforcer
+	global cost.EnforcerIF
+	local  cost.EnforcerIF
 	opts   *PerQueryEnforcerOpts
 }
 
@@ -126,6 +126,7 @@ func (pef *perQueryEnforcerFactory) GlobalEnforcer() *cost.Enforcer {
 type PerQueryEnforcer interface {
 	cost.EnforcerIF
 
+	Child() PerQueryEnforcer
 	Report()
 	Release()
 }
@@ -187,4 +188,72 @@ func (se *perQueryEnforcer) State() (cost.Report, cost.Limit) {
 func (se *perQueryEnforcer) Release() {
 	r, _ := se.local.State()
 	se.global.Add(-r.Cost)
+}
+
+type ChainedEnforcer struct {
+	resourceName string
+	local        *cost.Enforcer
+	parent       cost.EnforcerIF
+}
+
+func NewChainedEnforcer(resourceName string, root *cost.Enforcer) *ChainedEnforcer {
+	return &ChainedEnforcer{
+		resourceName: resourceName,
+		local:        root,
+		parent:       nil,
+	}
+}
+
+func (ce *ChainedEnforcer) Add(c cost.Cost) cost.Report {
+	if ce.parent == nil {
+		return ce.wrapLocalResult(ce.local.Add(c))
+	}
+
+	localR := ce.local.Add(c)
+	globalR := ce.parent.Add(c)
+
+	// check our local limit first
+	if localR.Error != nil {
+		return ce.wrapLocalResult(localR)
+	}
+
+	// check the global limit
+	if globalR.Error != nil {
+		return globalR
+	}
+
+	return localR
+}
+
+func (ce *ChainedEnforcer) wrapLocalResult(localR cost.Report) cost.Report {
+	if localR.Error != nil {
+		return cost.Report{
+			Cost:  localR.Cost,
+			Error: fmt.Errorf("exceeded %s limit: %s", ce.resourceName, localR.Error.Error()),
+		}
+	}
+	return localR
+}
+
+func (ce *ChainedEnforcer) Child(resourceName string) *ChainedEnforcer {
+	return &ChainedEnforcer{
+		resourceName: resourceName,
+		parent:       ce,
+		local:        ce.local.Clone(),
+	}
+}
+
+func (ce *ChainedEnforcer) WithLimitManager(lm cost.LimitManager) *ChainedEnforcer {
+	ce.local.LimitManager = lm
+	return ce
+}
+
+func (ce *ChainedEnforcer) State() (cost.Report, cost.Limit) {
+	return ce.local.State()
+}
+
+// Release releases all resources tracked by this enforcer back to the global enforcer
+func (ce *ChainedEnforcer) Release() {
+	r, _ := ce.local.State()
+	ce.parent.Add(-r.Cost)
 }
