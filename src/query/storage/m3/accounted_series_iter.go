@@ -24,6 +24,7 @@ package m3
 import (
 	"github.com/m3db/m3/src/dbnode/encoding"
 	"github.com/m3db/m3/src/x/cost"
+	"github.com/uber-go/tally"
 )
 
 // AccountedSeriesIter wraps a series iterator to track and enforce limits on datapoint usage. Datapoint usage
@@ -31,15 +32,19 @@ import (
 type AccountedSeriesIter struct {
 	encoding.SeriesIterator
 
+	scope       tally.Scope
+	fetchedDps  tally.Counter
 	enforcer    cost.EnforcerIF
 	enforcerErr error
 }
 
 // NewAccountedSeriesIter constructs an AccountedSeriesIter which uses wrapped as its source.
-func NewAccountedSeriesIter(wrapped encoding.SeriesIterator, enforcer cost.EnforcerIF) *AccountedSeriesIter {
+func NewAccountedSeriesIter(wrapped encoding.SeriesIterator, enforcer cost.EnforcerIF, scope tally.Scope) *AccountedSeriesIter {
 	return &AccountedSeriesIter{
 		SeriesIterator: wrapped,
 		enforcer:       enforcer,
+		scope:          scope,
+		fetchedDps:     scope.Tagged(map[string]string{"type": "fetched"}).Counter("datapoints"),
 	}
 }
 
@@ -65,6 +70,7 @@ func (as *AccountedSeriesIter) Next() bool {
 		return false
 	}
 
+	as.fetchedDps.Inc(1)
 	// we actually advanced the iterator; inform the enforcer
 	r := as.enforcer.Add(cost.Cost(1.0))
 

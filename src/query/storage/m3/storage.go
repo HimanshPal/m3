@@ -30,6 +30,7 @@ import (
 
 	"github.com/m3db/m3/src/dbnode/encoding"
 	"github.com/m3db/m3/src/query/block"
+	"github.com/m3db/m3/src/query/cost"
 	"github.com/m3db/m3/src/query/errors"
 	"github.com/m3db/m3/src/query/models"
 	"github.com/m3db/m3/src/query/storage"
@@ -111,7 +112,7 @@ func (s *m3storage) FetchBlocks(
 			return block.Result{}, err
 		}
 
-		return storage.FetchResultToBlockResult(fetchResult, query)
+		return storage.FetchResultToBlockResult(fetchResult, query, options.Enforcer)
 	}
 
 	raw, _, err := s.FetchCompressed(ctx, query, options)
@@ -125,7 +126,24 @@ func (s *m3storage) FetchBlocks(
 		StepSize: query.Interval,
 	}
 
-	blocks, err := m3db.ConvertM3DBSeriesIterators(raw, bounds, s.opts)
+	iters := raw.Iters()
+	accountedIters := make([]encoding.SeriesIterator, len(iters))
+
+	enforcer := options.Enforcer
+	if enforcer == nil {
+		enforcer = cost.NoopChainedEnforcer()
+	}
+
+	for i, iter := range iters {
+		accountedIters[i] = NewAccountedSeriesIter(iter, enforcer, options.Scope)
+	}
+
+	blocks, err := m3db.ConvertM3DBSeriesIterators(
+		encoding.NewSeriesIterators(accountedIters, raw.Pool()),
+		bounds,
+		s.opts,
+	)
+
 	if err != nil {
 		return block.Result{}, err
 	}

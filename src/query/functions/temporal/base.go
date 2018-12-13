@@ -104,7 +104,7 @@ type baseNode struct {
 // 4. Process all valid blocks from #3, #4 and mark them as processed
 // 5. Run a sweep phase to free up blocks which are no longer needed to be cached
 // TODO: Figure out if something else needs to be locked
-func (c *baseNode) Process(ID parser.NodeID, b block.Block) error {
+func (c *baseNode) Process(queryCtx *models.QueryContext, ID parser.NodeID, b block.Block) error {
 	unconsolidatedBlock, err := b.Unconsolidated()
 	if err != nil {
 		return err
@@ -163,7 +163,12 @@ func (c *baseNode) Process(ID parser.NodeID, b block.Block) error {
 	processRequests := make([]processRequest, 0, len(leftBlks))
 	// If we have all blocks for the left range in the cache, then process the current block
 	if !emptyLeftBlocks {
-		processRequests = append(processRequests, processRequest{blk: unconsolidatedBlock, deps: leftBlks, bounds: bounds})
+		processRequests = append(processRequests, processRequest{
+			blk:      unconsolidatedBlock,
+			deps:     leftBlks,
+			bounds:   bounds,
+			queryCtx: queryCtx,
+		})
 	}
 
 	leftBlks = append(leftBlks, unconsolidatedBlock)
@@ -260,7 +265,7 @@ func (c *baseNode) processSingleRequest(request processRequest) error {
 		resultSeriesMeta[i].Name = tags.ID()
 	}
 
-	builder, err := c.controller.BlockBuilder(seriesIter.Meta(), resultSeriesMeta)
+	builder, err := c.controller.BlockBuilder(request.queryCtx, seriesIter.Meta(), resultSeriesMeta)
 	if err != nil {
 		return err
 	}
@@ -328,7 +333,7 @@ func (c *baseNode) processSingleRequest(request processRequest) error {
 
 	nextBlock := builder.Build()
 	defer nextBlock.Close()
-	return c.controller.Process(nextBlock)
+	return c.controller.Process(request.queryCtx, nextBlock)
 }
 
 func (c *baseNode) sweep(processedKeys []bool, maxBlocks int) {
@@ -368,9 +373,10 @@ type MakeProcessor interface {
 }
 
 type processRequest struct {
-	blk    block.UnconsolidatedBlock
-	bounds models.Bounds
-	deps   []block.UnconsolidatedBlock
+	queryCtx *models.QueryContext
+	blk      block.UnconsolidatedBlock
+	bounds   models.Bounds
+	deps     []block.UnconsolidatedBlock
 }
 
 // blockCache keeps track of blocks from the same parent across time

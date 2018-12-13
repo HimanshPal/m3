@@ -138,9 +138,6 @@ func (h *PromReadHandler) ServeHTTPWithEngine(w http.ResponseWriter, r *http.Req
 	// TODO: Support multiple result types
 	w.Header().Set("Content-Type", "application/json")
 
-	renderResultsJSON(w, result, params)
-}
-
 	return result, params, nil
 }
 

@@ -288,25 +288,70 @@ func Run(runOpts RunOptions) {
 	logger.Info("interrupt", zap.String("cause", interruptErr.Error()))
 }
 
-func newPerQueryEnforcerFactory(cfg *config.Configuration, instrumentOptions instrument.Options) qcost.PerQueryEnforcerFactory {
-	costIops := instrumentOptions.SetMetricsScope(instrumentOptions.MetricsScope().SubScope("cost"))
+type globalReporter struct {
+	Datapoints        tally.Gauge
+	DatapointsCounter tally.Counter
+}
+
+func newGlobalReporter(s tally.Scope) globalReporter {
+	return globalReporter{
+		Datapoints:        s.Gauge("datapoints"),
+		DatapointsCounter: s.Counter("datapoints_counter"),
+	}
+}
+
+func (gr globalReporter) ReportCurrent(c cost.Cost) {
+	gr.Datapoints.Update(float64(c))
+}
+
+func (gr globalReporter) ReportCost(c cost.Cost) {
+	if c > 0 {
+		gr.DatapointsCounter.Inc(int64(c))
+	}
+}
+
+func (globalReporter) ReportOverLimit(enabled bool) {
+}
+
+type queryReporter struct {
+}
+
+func newPerQueryEnforcerFactory(cfg *config.Configuration, instrumentOptions instrument.Options) *qcost.ChainedEnforcer {
+	costScope := instrumentOptions.MetricsScope().SubScope("cost")
+	costIops := instrumentOptions.SetMetricsScope(costScope)
 	limitMgr := cost.NewStaticLimitManager(cfg.Limits.Global.AsLimitManagerOptions().SetInstrumentOptions(costIops))
 	tracker := cost.NewTracker()
 
 	globalEnforcer := cost.NewEnforcer(limitMgr, tracker,
-		cost.NewEnforcerOptions().SetInstrumentOptions(instrumentOptions).SetCostExceededMessage("limits.global.maxFetchedDatapoints exceeded"),
+		cost.NewEnforcerOptions().SetReporter(
+			newGlobalReporter(costScope.SubScope("global")),
+		).SetCostExceededMessage("limits.global.maxFetchedDatapoints exceeded"),
 	)
 
-	localEnforcerOpts := cost.NewEnforcerOptions().SetCostExceededMessage("limits.perQuery.maxFetchedDatapoints exceeded").SetInstrumentOptions(costIops)
-	subenforcer := cost.NewEnforcer(
+	queryEnforcerOpts := cost.NewEnforcerOptions().SetCostExceededMessage("limits.perQuery.maxFetchedDatapoints exceeded").SetInstrumentOptions(costIops)
+	queryEnforcer := cost.NewEnforcer(
 		cost.NewStaticLimitManager(cfg.Limits.PerQuery.AsLimitManagerOptions()),
 		cost.NewTracker(),
-		localEnforcerOpts)
+		queryEnforcerOpts)
 
-	return qcost.NewPerQueryEnforcerFactory(
-		globalEnforcer,
-		subenforcer,
-		qcost.NewPerQueryEnforcerOpts(costIops))
+	blockEnforcer := cost.NewEnforcer(
+		cost.NewStaticLimitManager(cost.NewLimitManagerOptions().SetDefaultLimit(cost.Limit{Enabled: false})),
+		cost.NewTracker(),
+		cost.NewEnforcerOptions().SetInstrumentOptions(instrument.NewOptions().SetMetricsScope(tally.NoopScope)),
+	)
+
+	// chain the enforcers together
+	blockFactoryFn := func(resourceName string, parent *qcost.ChainedEnforcer) *qcost.ChainedEnforcer {
+		return qcost.NewChainedEnforcer(resourceName, parent, blockEnforcer.Clone(), nil)
+	}
+
+	queryOpts := qcost.NewPerQueryEnforcerOpts().SetChildFactory(blockFactoryFn)
+	queryFactoryFn := func(resourceName string, parent *qcost.ChainedEnforcer) *qcost.ChainedEnforcer {
+		return qcost.NewChainedEnforcer(resourceName, parent, queryEnforcer.Clone(), queryOpts)
+	}
+
+	globalOpts := qcost.NewPerQueryEnforcerOpts().SetChildFactory(queryFactoryFn)
+	return qcost.NewRootChainedEnforcer("global", globalEnforcer, globalOpts)
 }
 
 // make connections to the m3db cluster(s) and generate sessions for those clusters along with the storage

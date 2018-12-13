@@ -100,6 +100,7 @@ func (n *FetchNode) Execute(ctx context.Context, queryCtx *models.QueryContext) 
 		Interval:    timeSpec.Step,
 	}, &storage.FetchOptions{
 		Enforcer:  queryCtx.Enforcer,
+		Scope:     queryCtx.Scope,
 		UseLegacy: n.useLegacy,
 	})
 	if err != nil {
@@ -115,7 +116,7 @@ func (n *FetchNode) Execute(ctx context.Context, queryCtx *models.QueryContext) 
 			}
 		}
 
-		if err := n.controller.Process(block); err != nil {
+		if err := n.controller.Process(queryCtx, block); err != nil {
 			block.Close()
 			// Fail on first error
 			return err

@@ -28,7 +28,6 @@ import (
 	"github.com/m3db/m3/src/query/models"
 	"github.com/m3db/m3/src/query/parser"
 	"github.com/m3db/m3/src/query/storage"
-	xcost "github.com/m3db/m3/src/x/cost"
 
 	"github.com/uber-go/tally"
 )
@@ -37,7 +36,7 @@ import (
 type Engine struct {
 	metrics                 *engineMetrics
 	costScope               tally.Scope
-	perQueryEnforcerFactory qcost.PerQueryEnforcerFactory
+	perQueryEnforcerFactory qcost.PerQueryEnforcer
 	store                   storage.Storage
 }
 
@@ -52,13 +51,14 @@ type Query struct {
 }
 
 // NewEngine returns a new instance of QueryExecutor.
-func NewEngine(store storage.Storage, scope tally.Scope, factory qcost.PerQueryEnforcerFactory) *Engine {
+func NewEngine(store storage.Storage, scope tally.Scope, factory qcost.PerQueryEnforcer) *Engine {
 	if factory == nil {
-		factory = qcost.NoopPerQueryEnforcerFactory()
+		factory = qcost.NoopChainedEnforcer()
 	}
 	return &Engine{
-		metrics: newEngineMetrics(scope),
-		store:   store,
+		metrics:   newEngineMetrics(scope),
+		costScope: scope,
+		store:     store,
 		perQueryEnforcerFactory: factory,
 	}
 }
@@ -126,9 +126,9 @@ func (e *Engine) Execute(ctx context.Context, query *storage.FetchQuery, opts *E
 func (e *Engine) ExecuteExpr(ctx context.Context, parser parser.Parser, opts *EngineOptions, params models.RequestParams, results chan Query) {
 	defer close(results)
 
-	perQueryEnforcer := e.perQueryEnforcerFactory.New()
+	perQueryEnforcer := e.perQueryEnforcerFactory.Child(qcost.QueryLevel)
 	defer func() {
-		perQueryEnforcer.Report()
+		//perQueryEnforcer.Report()
 		perQueryEnforcer.Release()
 	}()
 
@@ -156,16 +156,11 @@ func (e *Engine) ExecuteExpr(ctx context.Context, parser parser.Parser, opts *En
 	result := state.resultNode
 	results <- Query{Result: result}
 
-	if err := state.Execute(ctx, models.NewQueryContext(perQueryEnforcer)); err != nil {
+	if err := state.Execute(ctx, models.NewQueryContext(e.costScope, perQueryEnforcer)); err != nil {
 		result.abort(err)
 	} else {
 		result.done()
 	}
-}
-
-// Enforcer returns the cost.Enforcer instance for this engine.
-func (e *Engine) Enforcer() *xcost.Enforcer {
-	return e.perQueryEnforcerFactory.GlobalEnforcer()
 }
 
 // Close kills all running queries and prevents new queries from being attached.

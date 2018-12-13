@@ -32,7 +32,7 @@ import (
 )
 
 // FetchResultToBlockResult converts a fetch result into coordinator blocks
-func FetchResultToBlockResult(result *FetchResult, query *FetchQuery, enforcer *cost.ChainedEnforcer) (block.Result, error) {
+func FetchResultToBlockResult(result *FetchResult, query *FetchQuery, enforcer cost.PerQueryEnforcer) (block.Result, error) {
 	multiBlock, err := NewMultiSeriesBlock(result.SeriesList, query)
 	if err != nil {
 		return block.Result{}, err

@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/m3db/m3/src/query/block"
+	"github.com/m3db/m3/src/query/models"
 	"github.com/m3db/m3/src/query/parser"
 	"github.com/m3db/m3/src/query/test"
 
@@ -35,7 +36,7 @@ type dummyFunc struct {
 	controller *Controller
 }
 
-func (f *dummyFunc) Process(ID parser.NodeID, block block.Block) error {
+func (f *dummyFunc) Process(queryCtx *models.QueryContext, ID parser.NodeID, block block.Block) error {
 	f.processed = true
 	f.controller.Process(block)
 	return nil

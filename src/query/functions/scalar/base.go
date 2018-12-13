@@ -99,7 +99,7 @@ func (n *baseNode) Execute(ctx context.Context, queryCtx *models.QueryContext) e
 		}
 	}
 
-	if err := n.controller.Process(block); err != nil {
+	if err := n.controller.Process(queryCtx, block); err != nil {
 		block.Close()
 		// Fail on first error
 		return err

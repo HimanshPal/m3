@@ -30,6 +30,12 @@ import (
 	"github.com/uber-go/tally"
 )
 
+const (
+	BlockLevel  = "block"
+	QueryLevel  = "query"
+	GlobalLevel = "global"
+)
+
 // NB (amains) type alias here allows us the same visibility restrictions as defining an interface
 // (PerQueryEnforcerOpts isn't directly constructable), but without the unnecessary boilerplate.
 
@@ -37,14 +43,17 @@ import (
 type PerQueryEnforcerOpts struct {
 	valueBuckets   tally.Buckets
 	instrumentOpts instrument.Options
+	childFactory   childFactoryFn
 }
 
 // NewPerQueryEnforcerOpts constructs a default PerQueryEnforcerOpts
-func NewPerQueryEnforcerOpts(instrumentOps instrument.Options) *PerQueryEnforcerOpts {
-	return &PerQueryEnforcerOpts{
-		instrumentOpts: instrumentOps,
-		valueBuckets:   tally.MustMakeExponentialValueBuckets(1, 2, 20),
-	}
+func NewPerQueryEnforcerOpts() *PerQueryEnforcerOpts {
+	return &PerQueryEnforcerOpts{}
+}
+
+func (pe PerQueryEnforcerOpts) SetChildFactory(f childFactoryFn) *PerQueryEnforcerOpts {
+	pe.childFactory = f
+	return &pe
 }
 
 // SetDatapointsDistroBuckets -- see DatapointsDistroBuckets
@@ -58,76 +67,12 @@ func (pe *PerQueryEnforcerOpts) DatapointsDistroBuckets() tally.Buckets {
 	return pe.valueBuckets
 }
 
-// perQueryEnforcerFactory constructs PerQueryEnforcer instances with a shared global enforcer and independent
-// local enforcers.
-type perQueryEnforcerFactory struct {
-	global cost.EnforcerIF
-	local  cost.EnforcerIF
-	opts   *PerQueryEnforcerOpts
-}
-
-// A PerQueryEnforcerFactory constructs PerQueryEnforcer instances using a shared global enforcer.
-type PerQueryEnforcerFactory interface {
-	// GlobalEnforcer is the enforcer shared across instances.
-	GlobalEnforcer() *cost.Enforcer
-
-	// New constructs a new PerQueryEnforcer sharing the global enforcer but with a clean local tracker.
-	New() PerQueryEnforcer
-}
-
-// NewPerQueryEnforcerFactory constructs a perQueryEnforcerFactory which will use the provided enforcers and options
-// to construct PerQueryEnforcer instances. The parent enforcer will be shared between instances; the
-// provided localEnforcer will be cloned for each call to New().
-func NewPerQueryEnforcerFactory(parent *cost.Enforcer, localEnforcer *cost.Enforcer, opts *PerQueryEnforcerOpts) PerQueryEnforcerFactory {
-	if opts == nil {
-		opts = NewPerQueryEnforcerOpts(instrument.NewOptions())
-	}
-
-	return &perQueryEnforcerFactory{
-		global: parent,
-		local:  localEnforcer,
-		opts:   opts,
-	}
-}
-
-// New constructs a new PerQueryEnforcer using this factory's configuration. The parent enforcer will be shared between
-// instances; the provided localEnforcer will be cloned for each call to New().
-func (pef *perQueryEnforcerFactory) New() PerQueryEnforcer {
-	scope := pef.opts.instrumentOpts.MetricsScope()
-
-	return &perQueryEnforcer{
-		// important: clone the local enforcer to ensure per query isolation
-		local:  pef.local.Clone(),
-		global: pef.global,
-
-		globalCurrentDatapoints:  scope.SubScope("global").Gauge("datapoints"),
-		perQueryDatapointsDistro: scope.SubScope("per-query").Histogram("datapoints-distro", pef.opts.DatapointsDistroBuckets()),
-	}
-}
-
-var noopEnforcerFactory = NewPerQueryEnforcerFactory(cost.NoopEnforcer(), cost.NoopEnforcer(), nil)
-
-// NoopPerQueryEnforcerFactory returns a perQueryEnforcerFactory which only generates noop enforcer instances.
-func NoopPerQueryEnforcerFactory() PerQueryEnforcerFactory {
-	return noopEnforcerFactory
-}
-
-func NoopPerQueryEnforcer() PerQueryEnforcer {
-	return noopEnforcerFactory.New()
-}
-
-// GlobalEnforcer returns the global enforcer instance for this factory.
-func (pef *perQueryEnforcerFactory) GlobalEnforcer() *cost.Enforcer {
-	return pef.global
-}
-
 // PerQueryEnforcer is a cost.EnforcerIF implementation which tracks resource usage both at a per-query and a global
 // level.
 type PerQueryEnforcer interface {
 	cost.EnforcerIF
 
-	Child() PerQueryEnforcer
-	Report()
+	Child(resourceName string) PerQueryEnforcer
 	Release()
 }
 
@@ -190,17 +135,32 @@ func (se *perQueryEnforcer) Release() {
 	se.global.Add(-r.Cost)
 }
 
+type childFactoryFn func(resourceName string, parent *ChainedEnforcer) *ChainedEnforcer
+
 type ChainedEnforcer struct {
 	resourceName string
-	local        *cost.Enforcer
+	local        cost.EnforcerIF
 	parent       cost.EnforcerIF
+	childFactory childFactoryFn
 }
 
-func NewChainedEnforcer(resourceName string, root *cost.Enforcer) *ChainedEnforcer {
+func NoopChainedEnforcer() *ChainedEnforcer {
+	return NewRootChainedEnforcer("", cost.NoopEnforcer(), nil)
+}
+
+func NewRootChainedEnforcer(resourceName string, root *cost.Enforcer, opts *PerQueryEnforcerOpts) *ChainedEnforcer {
+	return NewChainedEnforcer(resourceName, nil, root, opts)
+}
+
+func NewChainedEnforcer(resourceName string, parent cost.EnforcerIF, local cost.EnforcerIF, opts *PerQueryEnforcerOpts) *ChainedEnforcer {
+	if opts == nil {
+		opts = NewPerQueryEnforcerOpts()
+	}
 	return &ChainedEnforcer{
 		resourceName: resourceName,
-		local:        root,
-		parent:       nil,
+		local:        local,
+		parent:       parent,
+		childFactory: opts.childFactory,
 	}
 }
 
@@ -235,16 +195,19 @@ func (ce *ChainedEnforcer) wrapLocalResult(localR cost.Report) cost.Report {
 	return localR
 }
 
-func (ce *ChainedEnforcer) Child(resourceName string) *ChainedEnforcer {
-	return &ChainedEnforcer{
-		resourceName: resourceName,
-		parent:       ce,
-		local:        ce.local.Clone(),
+func (ce *ChainedEnforcer) Child(resourceName string) PerQueryEnforcer {
+	if ce.childFactory == nil {
+		return &ChainedEnforcer{
+			resourceName: resourceName,
+			parent:       ce,
+			local:        ce.local.Clone(),
+		}
 	}
+
+	return ce.childFactory(resourceName, ce)
 }
 
-func (ce *ChainedEnforcer) WithLimitManager(lm cost.LimitManager) *ChainedEnforcer {
-	ce.local.LimitManager = lm
+func (ce *ChainedEnforcer) Clone() cost.EnforcerIF {
 	return ce
 }
 
@@ -255,5 +218,5 @@ func (ce *ChainedEnforcer) State() (cost.Report, cost.Limit) {
 // Release releases all resources tracked by this enforcer back to the global enforcer
 func (ce *ChainedEnforcer) Release() {
 	r, _ := ce.local.State()
-	ce.parent.Add(-r.Cost)
+	ce.Add(-r.Cost)
 }

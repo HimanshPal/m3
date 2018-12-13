@@ -30,6 +30,7 @@ import (
 	"github.com/m3db/m3/src/query/models"
 	"github.com/m3db/m3/src/query/ts"
 	xtime "github.com/m3db/m3x/time"
+	"github.com/uber-go/tally"
 )
 
 // Type describes the type of storage
@@ -85,13 +86,14 @@ type FetchOptions struct {
 	Limit     int
 	UseLegacy bool
 	Enforcer  cost.PerQueryEnforcer
+	Scope     tally.Scope
 }
 
 // NewFetchOptions creates a new fetch options.
 func NewFetchOptions() *FetchOptions {
 	return &FetchOptions{
 		Limit:    0,
-		Enforcer: cost.NoopPerQueryEnforcer(),
+		Enforcer: cost.NoopChainedEnforcer(),
 	}
 }
 
