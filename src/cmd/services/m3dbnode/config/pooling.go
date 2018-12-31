@@ -105,6 +105,12 @@ type PoolingPolicy struct {
 
 	// The policy for the WriteBatchPool.
 	WriteBatchPool WriteBatchPoolPolicy `yaml:"writeBatchPool"`
+
+	// The policy for the BufferBucket pool.
+	BufferBucketPool PoolPolicy `yaml:"bufferBucketPool"`
+
+	// The policy for the BufferBucketVersions pool.
+	BufferBucketVersionsPool PoolPolicy `yaml:"bufferBucketVersionsPool"`
 }
 
 // PoolPolicy specifies a single pool policy.
