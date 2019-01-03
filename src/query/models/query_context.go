@@ -40,3 +40,7 @@ func NewQueryContext(scope tally.Scope, enforcer cost.PerQueryEnforcer) *QueryCo
 		Enforcer: enforcer,
 	}
 }
+
+func NoopQueryContext() *QueryContext {
+	return NewQueryContext(tally.NoopScope, cost.NoopChainedEnforcer())
+}

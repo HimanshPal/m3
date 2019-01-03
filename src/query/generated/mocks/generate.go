@@ -26,6 +26,6 @@
 //go:generate sh -c "mockgen -package=m3ql -destination=$GOPATH/src/github.com/m3db/m3/src/query/parser/m3ql/types_mock.go -source=$GOPATH/src/github.com/m3db/m3/src/query/parser/m3ql/types.go"
 
 // mockgen rules for generating mocks for unexported interfaces (file mode)
-//go:generate sh -c "mockgen -package=cost -destination=$GOPATH/src/$PACKAGE/src/query/cost/cost_mock.go $PACKAGE/src/query/cost PerQueryEnforcer,PerQueryEnforcerFactory"
+//go:generate sh -c "mockgen -package=cost -destination=$GOPATH/src/$PACKAGE/src/query/cost/cost_mock.go $PACKAGE/src/query/cost PerQueryEnforcer"
 
 package mocks

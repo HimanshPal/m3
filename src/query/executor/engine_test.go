@@ -60,16 +60,15 @@ func TestEngine_ExecuteExpr(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockEnforcer := cost.NewMockPerQueryEnforcer(ctrl)
 		mockEnforcer.EXPECT().Release().Times(1)
-		mockEnforcer.EXPECT().Report().Times(1)
 
-		mockFactory := cost.NewMockPerQueryEnforcerFactory(ctrl)
-		mockFactory.EXPECT().New().Return(mockEnforcer)
+		mockParent := cost.NewMockPerQueryEnforcer(ctrl)
+		mockParent.EXPECT().Child(gomock.Any()).Return(mockEnforcer)
 
 		parser, err := promql.Parse("foo", models.NewTagOptions())
 		require.NoError(t, err)
 
 		results := make(chan Query)
-		engine := NewEngine(mock.NewMockStorage(), tally.NewTestScope("", nil), mockFactory)
+		engine := NewEngine(mock.NewMockStorage(), tally.NewTestScope("", nil), mockParent)
 		go engine.ExecuteExpr(context.TODO(), parser, &EngineOptions{}, models.RequestParams{
 			Start: time.Now().Add(-2 * time.Second),
 			End:   time.Now(),

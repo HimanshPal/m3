@@ -30,7 +30,6 @@ import (
 	"github.com/m3db/m3/src/query/parser"
 	"github.com/m3db/m3/src/query/test"
 	"github.com/m3db/m3/src/query/test/executor"
-	"github.com/m3db/m3/src/x/cost"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,7 +52,7 @@ func TestScalarTime(t *testing.T) {
 			Step:  step,
 		},
 	})
-	err := node.Execute(context.Background(), models.NewQueryContext(cost.NoopEnforcer()))
+	err := node.Execute(context.Background(), models.NoopQueryContext())
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 1)
 

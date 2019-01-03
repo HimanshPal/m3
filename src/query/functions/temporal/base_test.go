@@ -81,7 +81,7 @@ func TestBaseWithB0(t *testing.T) {
 			Step:  time.Second,
 		},
 	})
-	err := node.Process(parser.NodeID(0), block)
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), block)
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2)
 	require.IsType(t, node, &baseNode{})
@@ -98,7 +98,7 @@ func TestBaseWithB0(t *testing.T) {
 		},
 	})
 
-	err = node.Process(parser.NodeID(0), block)
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), block)
 	require.NoError(t, err)
 	bNode = node.(*baseNode)
 	_, exists = bNode.cache.get(boundStart)
@@ -113,7 +113,7 @@ func TestBaseWithB0(t *testing.T) {
 		},
 	})
 
-	err = node.Process(parser.NodeID(0), block)
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), block)
 	require.NoError(t, err)
 	bNode = node.(*baseNode)
 	_, exists = bNode.cache.get(boundStart)
@@ -138,12 +138,12 @@ func TestBaseWithB1B0(t *testing.T) {
 		},
 	})
 	bNode := node.(*baseNode)
-	err := node.Process(parser.NodeID(0), blocks[1])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 0, "nothing processed yet")
 	compareCacheState(t, bNode, bounds, []bool{false, true}, "B1 cached")
 
-	err = node.Process(parser.NodeID(0), blocks[0])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 4, "output from both blocks")
 	compareCacheState(t, bNode, bounds, []bool{false, false}, "everything removed from cache")
@@ -170,12 +170,12 @@ func TestBaseWithB0B1(t *testing.T) {
 		},
 	})
 	bNode := node.(*baseNode)
-	err := node.Process(parser.NodeID(0), blocks[0])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "B0 processed")
 	compareCacheState(t, bNode, bounds, []bool{true, false}, "B0 cached for future")
 
-	err = node.Process(parser.NodeID(0), blocks[1])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 4, "output from both blocks")
 	compareCacheState(t, bNode, bounds, []bool{false, false}, "B0 removed from cache, B1 not cached")
@@ -204,19 +204,19 @@ func TestBaseWithB0B1B2(t *testing.T) {
 	bNode := node.(*baseNode)
 
 	// B0 arrives
-	err := node.Process(parser.NodeID(0), blocks[0])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "B0 processed")
 	compareCacheState(t, bNode, bounds, []bool{true, false, false}, "B0 cached for future")
 
 	// B1 arrives
-	err = node.Process(parser.NodeID(0), blocks[1])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 4, "output from B0, B1")
 	compareCacheState(t, bNode, bounds, []bool{false, true, false}, "B0 removed from cache, B1 cached")
 
 	// B2 arrives
-	err = node.Process(parser.NodeID(0), blocks[2])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[2])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 6, "output from all blocks")
 	compareCacheState(t, bNode, bounds, []bool{false, false, false}, "nothing cached")
@@ -242,19 +242,19 @@ func TestBaseWithB0B2B1(t *testing.T) {
 	bNode := node.(*baseNode)
 
 	// B0 arrives
-	err := node.Process(parser.NodeID(0), blocks[0])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "B0 processed")
 	compareCacheState(t, bNode, bounds, []bool{true, false, false}, "B0 cached for future")
 
 	// B2 arrives
-	err = node.Process(parser.NodeID(0), blocks[2])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[2])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "Only B0 processed")
 	compareCacheState(t, bNode, bounds, []bool{true, false, true}, "B0, B2 cached")
 
 	// B1 arrives
-	err = node.Process(parser.NodeID(0), blocks[1])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 6, "output from all blocks")
 	compareCacheState(t, bNode, bounds, []bool{false, false, false}, "nothing cached")
@@ -280,19 +280,19 @@ func TestBaseWithB1B0B2(t *testing.T) {
 	bNode := node.(*baseNode)
 
 	// B1 arrives
-	err := node.Process(parser.NodeID(0), blocks[1])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 0, "Nothing processed")
 	compareCacheState(t, bNode, bounds, []bool{false, true, false}, "B1 cached for future")
 
 	// B0 arrives
-	err = node.Process(parser.NodeID(0), blocks[0])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 4, "B0, B1 processed")
 	compareCacheState(t, bNode, bounds, []bool{false, true, false}, "B1 still cached, B0 not cached")
 
 	// B2 arrives
-	err = node.Process(parser.NodeID(0), blocks[2])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[2])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 6, "output from all blocks")
 	compareCacheState(t, bNode, bounds, []bool{false, false, false}, "nothing cached")
@@ -318,19 +318,19 @@ func TestBaseWithB1B2B0(t *testing.T) {
 	bNode := node.(*baseNode)
 
 	// B1 arrives
-	err := node.Process(parser.NodeID(0), blocks[1])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 0, "Nothing processed")
 	compareCacheState(t, bNode, bounds, []bool{false, true, false}, "B1 cached for future")
 
 	// B2 arrives
-	err = node.Process(parser.NodeID(0), blocks[2])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[2])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "B1 processed")
 	compareCacheState(t, bNode, bounds, []bool{false, true, false}, "B1 still cached, B2 not cached")
 
 	// B0 arrives
-	err = node.Process(parser.NodeID(0), blocks[0])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 6, "output from all blocks")
 	compareCacheState(t, bNode, bounds, []bool{false, false, false}, "nothing cached")
@@ -356,19 +356,19 @@ func TestBaseWithB2B0B1(t *testing.T) {
 	bNode := node.(*baseNode)
 
 	// B2 arrives
-	err := node.Process(parser.NodeID(0), blocks[2])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[2])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 0, "Nothing processed")
 	compareCacheState(t, bNode, bounds, []bool{false, false, true}, "B2 cached for future")
 
 	// B0 arrives
-	err = node.Process(parser.NodeID(0), blocks[0])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "B0 processed")
 	compareCacheState(t, bNode, bounds, []bool{true, false, true}, "B0, B2 cached")
 
 	// B1 arrives
-	err = node.Process(parser.NodeID(0), blocks[1])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 6, "output from all blocks")
 	compareCacheState(t, bNode, bounds, []bool{false, false, false}, "nothing cached")
@@ -394,19 +394,19 @@ func TestBaseWithB2B1B0(t *testing.T) {
 	bNode := node.(*baseNode)
 
 	// B2 arrives
-	err := node.Process(parser.NodeID(0), blocks[2])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[2])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 0, "Nothing processed")
 	compareCacheState(t, bNode, bounds, []bool{false, false, true}, "B2 cached for future")
 
 	// B1 arrives
-	err = node.Process(parser.NodeID(0), blocks[1])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "B0 processed")
 	compareCacheState(t, bNode, bounds, []bool{false, true, false}, "B1 cached, B2 removed")
 
 	// B0 arrives
-	err = node.Process(parser.NodeID(0), blocks[0])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 6, "output from all blocks")
 	compareCacheState(t, bNode, bounds, []bool{false, false, false}, "nothing cached")
@@ -432,31 +432,31 @@ func TestBaseWithSize3B0B1B2B3B4(t *testing.T) {
 	bNode := node.(*baseNode)
 
 	// B0 arrives
-	err := node.Process(parser.NodeID(0), blocks[0])
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[0])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "B0 processed")
 	compareCacheState(t, bNode, bounds, []bool{true, false, false, false, false}, "B0 cached for future")
 
 	// B1 arrives
-	err = node.Process(parser.NodeID(0), blocks[1])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[1])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 4, "B0, B1 processed")
 	compareCacheState(t, bNode, bounds, []bool{true, true, false, false, false}, "B0, B1 cached")
 
 	// B2 arrives
-	err = node.Process(parser.NodeID(0), blocks[2])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[2])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 6, "B0, B1, B2 processed")
 	compareCacheState(t, bNode, bounds, []bool{true, true, true, false, false}, "B0, B1, B2 cached")
 
 	// B3 arrives
-	err = node.Process(parser.NodeID(0), blocks[3])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[3])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 8, "B0, B1, B2, B3 processed")
 	compareCacheState(t, bNode, bounds, []bool{false, true, true, true, false}, "B0 removed, B1, B2, B3 cached")
 
 	// B4 arrives
-	err = node.Process(parser.NodeID(0), blocks[4])
+	err = node.Process(models.NoopQueryContext(), parser.NodeID(0), blocks[4])
 	require.NoError(t, err)
 	assert.Len(t, sink.Values, 10, "all 5 blocks processed")
 	compareCacheState(t, bNode, bounds, []bool{false, false, false, false, false}, "nothing cached")
@@ -493,7 +493,12 @@ func TestSingleProcessRequest(t *testing.T) {
 		},
 	})
 	bNode := node.(*baseNode)
-	err := bNode.processSingleRequest(processRequest{blk: block2, bounds: bounds, deps: []block.UnconsolidatedBlock{block1}})
+	err := bNode.processSingleRequest(processRequest{
+		blk:      block2,
+		bounds:   bounds,
+		deps:     []block.UnconsolidatedBlock{block1},
+		queryCtx: models.NoopQueryContext(),
+	})
 	assert.NoError(t, err)
 	assert.Len(t, sink.Values, 2, "block processed")
 	// Current Block:     0  1  2  3  4  5

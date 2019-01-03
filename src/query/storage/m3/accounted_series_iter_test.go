@@ -29,6 +29,7 @@ import (
 	"github.com/m3db/m3/src/dbnode/ts"
 	"github.com/m3db/m3/src/query/test/seriesiter"
 	"github.com/m3db/m3/src/x/cost"
+	"github.com/uber-go/tally"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -75,7 +76,7 @@ func setupAccountedSeriesIter(t *testing.T, numValues int, limit cost.Cost) *acc
 	return &accountedSeriesIterSetup{
 		Ctrl:     ctrl,
 		Enforcer: enforcer,
-		Iter:     NewAccountedSeriesIter(mockWrappedIter, enforcer),
+		Iter:     NewAccountedSeriesIter(mockWrappedIter, enforcer, tally.NoopScope),
 	}
 }
 
@@ -130,7 +131,7 @@ func TestAccountedSeriesIter_Next(t *testing.T) {
 	t.Run("delegates on wrapped error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockIter := mockSeriesIterWithErr(ctrl)
-		iter := NewAccountedSeriesIter(mockIter, newTestEnforcer(5))
+		iter := NewAccountedSeriesIter(mockIter, newTestEnforcer(5), tally.NoopScope)
 
 		assert.True(t, iter.Next(), "the wrapped iterator returns true, so the AcccountedSeriesIterator should return true")
 	})
@@ -145,7 +146,7 @@ func mockSeriesIterWithErr(ctrl *gomock.Controller) *encoding.MockSeriesIterator
 func TestAccountedSeriesIter_Err(t *testing.T) {
 	t.Run("returns wrapped error over enforcer error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		iter := NewAccountedSeriesIter(mockSeriesIterWithErr(ctrl), newTestEnforcer(1))
+		iter := NewAccountedSeriesIter(mockSeriesIterWithErr(ctrl), newTestEnforcer(1), tally.NoopScope)
 		iter.Next()
 		assert.EqualError(t, iter.Err(), "test error")
 	})

@@ -127,7 +127,7 @@ func newTestSetup() *testSetup {
 	return &testSetup{
 		Storage: mockStorage,
 		Handler: NewPromReadHandler(
-			executor.NewEngine(mockStorage, tally.NewTestScope("test", nil), cost.NoopPerQueryEnforcerFactory()),
+			executor.NewEngine(mockStorage, tally.NewTestScope("test", nil), cost.NoopChainedEnforcer()),
 			models.NewTagOptions(),
 			&config.LimitsConfiguration{},
 			tally.NoopScope,

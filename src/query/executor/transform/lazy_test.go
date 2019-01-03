@@ -38,7 +38,7 @@ type dummyFunc struct {
 
 func (f *dummyFunc) Process(queryCtx *models.QueryContext, ID parser.NodeID, block block.Block) error {
 	f.processed = true
-	f.controller.Process(block)
+	f.controller.Process(queryCtx, block)
 	return nil
 }
 
@@ -51,7 +51,7 @@ func TestLazyState(t *testing.T) {
 	downStreamController.AddTransform(sNode)
 	values, bounds := test.GenerateValuesAndBounds(nil, nil)
 	b := test.NewBlockFromValues(bounds, values)
-	err := node.Process(parser.NodeID(1), b)
+	err := node.Process(models.NoopQueryContext(), parser.NodeID(1), b)
 	assert.NoError(t, err)
 	assert.NotNil(t, sNode.block, "downstream process called with a block")
 	assert.IsType(t, sNode.block, &lazyBlock{})

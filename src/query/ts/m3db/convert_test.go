@@ -45,7 +45,7 @@ func generateIterators(
 	t *testing.T,
 	stepSize time.Duration,
 ) (
-	encoding.SeriesIterators,
+	[]encoding.SeriesIterator,
 	models.Bounds,
 ) {
 	datapoints := [][][]test.Datapoint{
@@ -110,7 +110,7 @@ func generateIterators(
 		iters[i] = iter
 	}
 
-	return encoding.NewSeriesIterators(iters, nil), bounds
+	return iters, bounds
 }
 
 func buildCustomIterator(

@@ -187,7 +187,7 @@ func (c *baseNode) Process(queryCtx *models.QueryContext, ID parser.NodeID, b bl
 
 		deps := leftBlks[len(leftBlks)-lStart:]
 		deps = append(deps, rightBlks[:i]...)
-		processRequests = append(processRequests, processRequest{blk: rightBlks[i], deps: deps, bounds: bounds.Next(i + 1)})
+		processRequests = append(processRequests, processRequest{blk: rightBlks[i], deps: deps, bounds: bounds.Next(i + 1), queryCtx: queryCtx})
 	}
 
 	// If either the left range or right range wasn't fully processed then cache the current block
