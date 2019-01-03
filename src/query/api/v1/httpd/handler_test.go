@@ -49,7 +49,7 @@ func makeTagOptions() models.TagOptions {
 }
 
 func setupHandler(store storage.Storage) (*Handler, error) {
-	return NewHandler(store, makeTagOptions(), nil, executor.NewEngine(store, tally.NewTestScope("test", nil), cost.NoopPerQueryEnforcerFactory()), nil, nil,
+	return NewHandler(store, makeTagOptions(), nil, executor.NewEngine(store, tally.NewTestScope("test", nil), cost.NoopChainedEnforcer()), nil, nil,
 		config.Configuration{}, nil, tally.NewTestScope("", nil))
 }
 

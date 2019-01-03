@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/m3db/m3/src/x/cost"
+	"github.com/stretchr/testify/require"
 
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
@@ -39,24 +40,25 @@ func TestPropertyPerQueryEnforcerAlwaysEndsUpZero(t *testing.T) {
 	props := gopter.NewProperties(testParams)
 
 	globalEndsUpZero := func(costs []float64, perQueryThreshold, globalThreshold float64) bool {
-		pqf := NewPerQueryEnforcerFactory(
-			newTestEnforcer(cost.Limit{Threshold: cost.Cost(globalThreshold), Enabled: true}),
-			newTestEnforcer(cost.Limit{Threshold: cost.Cost(perQueryThreshold), Enabled: true}), nil)
-
+		pqf, err := NewChainedEnforcerFromModels(
+			"",
+			[]cost.EnforcerIF{newTestEnforcer(cost.Limit{Threshold: cost.Cost(globalThreshold), Enabled: true}),
+				newTestEnforcer(cost.Limit{Threshold: cost.Cost(perQueryThreshold), Enabled: true})})
+		require.NoError(t, err)
 		wg := sync.WaitGroup{}
 		for _, c := range costs {
 			wg.Add(1)
 			go func(c float64) {
 				defer wg.Done()
 
-				perQuery := pqf.New()
+				perQuery := pqf.Child("query")
 				defer perQuery.Release()
 				perQuery.Add(cost.Cost(c))
 			}(c)
 		}
 
 		wg.Wait()
-		r, _ := pqf.GlobalEnforcer().State()
+		r, _ := pqf.local.State()
 
 		// do delta comparison to deal with floating point errors. TODO: cost could potentially be an int
 		const tolerance = 0.000001

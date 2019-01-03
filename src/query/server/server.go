@@ -204,7 +204,10 @@ func Run(runOpts RunOptions) {
 		defer cleanup()
 	}
 
-	perQueryEnforcer := newPerQueryEnforcerFactory(&cfg, instrumentOptions)
+	perQueryEnforcer, err := newPerQueryEnforcerFactory(&cfg, instrumentOptions)
+	if err != nil {
+		logger.Fatal("unable to setup perQueryEnforcer", zap.Error(err))
+	}
 
 	engine := executor.NewEngine(backendStorage, scope.SubScope("engine"), perQueryEnforcer)
 
@@ -316,7 +319,7 @@ func (globalReporter) ReportOverLimit(enabled bool) {
 type queryReporter struct {
 }
 
-func newPerQueryEnforcerFactory(cfg *config.Configuration, instrumentOptions instrument.Options) *qcost.ChainedEnforcer {
+func newPerQueryEnforcerFactory(cfg *config.Configuration, instrumentOptions instrument.Options) (*qcost.ChainedEnforcer, error) {
 	costScope := instrumentOptions.MetricsScope().SubScope("cost")
 	costIops := instrumentOptions.SetMetricsScope(costScope)
 	limitMgr := cost.NewStaticLimitManager(cfg.Limits.Global.AsLimitManagerOptions().SetInstrumentOptions(costIops))
@@ -334,24 +337,10 @@ func newPerQueryEnforcerFactory(cfg *config.Configuration, instrumentOptions ins
 		cost.NewTracker(),
 		queryEnforcerOpts)
 
-	blockEnforcer := cost.NewEnforcer(
-		cost.NewStaticLimitManager(cost.NewLimitManagerOptions().SetDefaultLimit(cost.Limit{Enabled: false})),
-		cost.NewTracker(),
-		cost.NewEnforcerOptions().SetInstrumentOptions(instrument.NewOptions().SetMetricsScope(tally.NoopScope)),
-	)
-
-	// chain the enforcers together
-	blockFactoryFn := func(resourceName string, parent *qcost.ChainedEnforcer) *qcost.ChainedEnforcer {
-		return qcost.NewChainedEnforcer(resourceName, parent, blockEnforcer.Clone(), nil)
-	}
-
-	queryOpts := qcost.NewPerQueryEnforcerOpts().SetChildFactory(blockFactoryFn)
-	queryFactoryFn := func(resourceName string, parent *qcost.ChainedEnforcer) *qcost.ChainedEnforcer {
-		return qcost.NewChainedEnforcer(resourceName, parent, queryEnforcer.Clone(), queryOpts)
-	}
-
-	globalOpts := qcost.NewPerQueryEnforcerOpts().SetChildFactory(queryFactoryFn)
-	return qcost.NewRootChainedEnforcer("global", globalEnforcer, globalOpts)
+	return qcost.NewChainedEnforcerFromModels("global", []cost.EnforcerIF{
+		globalEnforcer,
+		queryEnforcer,
+	})
 }
 
 // make connections to the m3db cluster(s) and generate sessions for those clusters along with the storage
