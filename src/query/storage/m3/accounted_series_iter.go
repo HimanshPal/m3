@@ -23,7 +23,8 @@ package m3
 
 import (
 	"github.com/m3db/m3/src/dbnode/encoding"
-	"github.com/m3db/m3/src/x/cost"
+	"github.com/m3db/m3/src/query/cost"
+
 	"github.com/uber-go/tally"
 )
 
@@ -34,12 +35,12 @@ type AccountedSeriesIter struct {
 
 	scope       tally.Scope
 	fetchedDps  tally.Counter
-	enforcer    cost.EnforcerIF
+	enforcer    cost.PerQueryEnforcer
 	enforcerErr error
 }
 
 // NewAccountedSeriesIter constructs an AccountedSeriesIter which uses wrapped as its source.
-func NewAccountedSeriesIter(wrapped encoding.SeriesIterator, enforcer cost.EnforcerIF, scope tally.Scope) *AccountedSeriesIter {
+func NewAccountedSeriesIter(wrapped encoding.SeriesIterator, enforcer cost.PerQueryEnforcer, scope tally.Scope) *AccountedSeriesIter {
 	return &AccountedSeriesIter{
 		SeriesIterator: wrapped,
 		enforcer:       enforcer,
@@ -72,11 +73,17 @@ func (as *AccountedSeriesIter) Next() bool {
 
 	as.fetchedDps.Inc(1)
 	// we actually advanced the iterator; inform the enforcer
-	r := as.enforcer.Add(cost.Cost(1.0))
+	r := as.enforcer.Add(1.0)
 
 	if err := r.Error; err != nil {
 		as.enforcerErr = err
 	}
 
 	return hasNext
+}
+
+// Close closes the underlying iterator, and marks datapoints as released to our enforcer.
+func (as *AccountedSeriesIter) Close() {
+	as.SeriesIterator.Close()
+	as.enforcer.Release()
 }

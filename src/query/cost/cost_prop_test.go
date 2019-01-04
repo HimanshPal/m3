@@ -27,11 +27,11 @@ import (
 	"testing"
 
 	"github.com/m3db/m3/src/x/cost"
-	"github.com/stretchr/testify/require"
 
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPropertyPerQueryEnforcerAlwaysEndsUpZero(t *testing.T) {
@@ -40,7 +40,7 @@ func TestPropertyPerQueryEnforcerAlwaysEndsUpZero(t *testing.T) {
 	props := gopter.NewProperties(testParams)
 
 	globalEndsUpZero := func(costs []float64, perQueryThreshold, globalThreshold float64) bool {
-		pqf, err := NewChainedEnforcerFromModels(
+		pqf, err := NewChainedEnforcer(
 			"",
 			[]cost.EnforcerIF{newTestEnforcer(cost.Limit{Threshold: cost.Cost(globalThreshold), Enabled: true}),
 				newTestEnforcer(cost.Limit{Threshold: cost.Cost(perQueryThreshold), Enabled: true})})

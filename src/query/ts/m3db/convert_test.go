@@ -163,7 +163,7 @@ func generateBlocks(
 	iterators, bounds := generateIterators(t, stepSize)
 	blockOptions := NewOptions().SetLookbackDuration(time.Minute)
 	blocks, err := ConvertM3DBSeriesIterators(
-		iterators,
+		encoding.NewSeriesIterators(iterators, nil),
 		bounds,
 		blockOptions,
 	)

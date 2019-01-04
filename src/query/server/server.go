@@ -204,7 +204,7 @@ func Run(runOpts RunOptions) {
 		defer cleanup()
 	}
 
-	perQueryEnforcer, err := newPerQueryEnforcerFactory(&cfg, instrumentOptions)
+	perQueryEnforcer, err := newPerQueryEnforcer(&cfg, instrumentOptions)
 	if err != nil {
 		logger.Fatal("unable to setup perQueryEnforcer", zap.Error(err))
 	}
@@ -316,10 +316,7 @@ func (gr globalReporter) ReportCost(c cost.Cost) {
 func (globalReporter) ReportOverLimit(enabled bool) {
 }
 
-type queryReporter struct {
-}
-
-func newPerQueryEnforcerFactory(cfg *config.Configuration, instrumentOptions instrument.Options) (*qcost.ChainedEnforcer, error) {
+func newPerQueryEnforcer(cfg *config.Configuration, instrumentOptions instrument.Options) (*qcost.ChainedEnforcer, error) {
 	costScope := instrumentOptions.MetricsScope().SubScope("cost")
 	costIops := instrumentOptions.SetMetricsScope(costScope)
 	limitMgr := cost.NewStaticLimitManager(cfg.Limits.Global.AsLimitManagerOptions().SetInstrumentOptions(costIops))
@@ -337,9 +334,16 @@ func newPerQueryEnforcerFactory(cfg *config.Configuration, instrumentOptions ins
 		cost.NewTracker(),
 		queryEnforcerOpts)
 
-	return qcost.NewChainedEnforcerFromModels("global", []cost.EnforcerIF{
+	blockEnforcer := cost.NewEnforcer(
+		cost.NewStaticLimitManager(cost.NewLimitManagerOptions().SetDefaultLimit(cost.Limit{Enabled: false})),
+		cost.NewTracker(),
+		nil,
+	)
+
+	return qcost.NewChainedEnforcer(qcost.GlobalLevel, []cost.EnforcerIF{
 		globalEnforcer,
 		queryEnforcer,
+		blockEnforcer,
 	})
 }
 

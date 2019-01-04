@@ -25,17 +25,17 @@ import (
 	"testing"
 
 	"github.com/m3db/m3/src/x/cost"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/uber-go/tally"
 )
 
-func TestPerQueryEnforcerFactory_New(t *testing.T) {
+func TestChainedEnforcer_Child(t *testing.T) {
 	t.Run("creates independent local enforcers with shared global enforcer", func(t *testing.T) {
 		globalEnforcer := newTestEnforcer(cost.Limit{Threshold: 10.0, Enabled: true})
 		localEnforcer := newTestEnforcer(cost.Limit{Threshold: 5.0, Enabled: true})
 
-		pef, err := NewChainedEnforcerFromModels("", []cost.EnforcerIF{globalEnforcer, localEnforcer})
+		pef, err := NewChainedEnforcer("", []cost.EnforcerIF{globalEnforcer, localEnforcer})
 		require.NoError(t, err)
 
 		l1, l2 := pef.Child("foo"), pef.Child("foo")
@@ -48,40 +48,9 @@ func TestPerQueryEnforcerFactory_New(t *testing.T) {
 	})
 }
 
-//func TestPerQueryEnforcer_Report(t *testing.T) {
-//	testScope := tally.NewTestScope("", nil)
-//
-//	pef := NewPerQueryEnforcerFactory(
-//		newTestEnforcer(cost.Limit{Threshold: 10.0, Enabled: true}),
-//		newTestEnforcer(cost.Limit{Threshold: 5.0, Enabled: true}),
-//		NewPerQueryEnforcerOpts(instrument.NewOptions().SetMetricsScope(testScope)).SetDatapointsDistroBuckets(
-//			tally.ValueBuckets{5.0, 10.0}))
-//
-//	pqe1, pqe2 := pef.Child("query"), pef.Child("query")
-//	pqe1.Add(cost.Cost(1.0))
-//	pqe2.Add(cost.Cost(6.0))
-//
-//	pqe1.Report()
-//	pqe2.Report()
-//
-//	snapshot := testScope.Snapshot()
-//
-//	globalGauge := requireGauge(t, snapshot.Gauges(),
-//		tally.KeyForPrefixedStringMap("global.datapoints", map[string]string{}))
-//
-//	assert.Equal(t, 7.0, globalGauge.Value())
-//
-//	localHisto := requireHistogram(t, snapshot.Histograms(),
-//		tally.KeyForPrefixedStringMap("per-query.datapoints-distro", map[string]string{}))
-//
-//	const delta = 0.00001
-//	assert.InDelta(t, 1, localHisto.Values()[5.0], delta)
-//	assert.InDelta(t, 1, localHisto.Values()[10.0], delta)
-//}
-
-func TestPerQueryEnforcer_Release(t *testing.T) {
+func TestChainedEnforcer_Release(t *testing.T) {
 	t.Run("removes local total from global", func(t *testing.T) {
-		pef, err := NewChainedEnforcerFromModels(
+		pef, err := NewChainedEnforcer(
 			"",
 			[]cost.EnforcerIF{newTestEnforcer(cost.Limit{Threshold: 10.0, Enabled: true}),
 				newTestEnforcer(cost.Limit{Threshold: 5.0, Enabled: true})})
@@ -102,7 +71,7 @@ func TestPerQueryEnforcer_Release(t *testing.T) {
 	})
 }
 
-func TestPerQueryEnforcer_Add(t *testing.T) {
+func TestChainedEnforcer_Add(t *testing.T) {
 	assertGlobalError := func(t *testing.T, err error) {
 		if assert.Error(t, err) {
 			assert.Regexp(t, "exceeded global limit", err.Error())
@@ -116,19 +85,19 @@ func TestPerQueryEnforcer_Add(t *testing.T) {
 	}
 
 	t.Run("errors on global error", func(t *testing.T) {
-		pqe := newTestPerQueryEnforcer(5.0, 100.0)
+		pqe := newTestChainedEnforcer(5.0, 100.0)
 		r := pqe.Add(cost.Cost(6.0))
 		assertGlobalError(t, r.Error)
 	})
 
 	t.Run("errors on local error", func(t *testing.T) {
-		pqe := newTestPerQueryEnforcer(100.0, 5.0)
+		pqe := newTestChainedEnforcer(100.0, 5.0)
 		r := pqe.Add(cost.Cost(6.0))
 		assertLocalError(t, r.Error)
 	})
 
 	t.Run("adds to local in case of global error", func(t *testing.T) {
-		pqe := newTestPerQueryEnforcer(5.0, 100.0)
+		pqe := newTestChainedEnforcer(5.0, 100.0)
 		r := pqe.Add(cost.Cost(6.0))
 		assertGlobalError(t, r.Error)
 
@@ -140,7 +109,7 @@ func TestPerQueryEnforcer_Add(t *testing.T) {
 	})
 
 	t.Run("adds to global in case of local error", func(t *testing.T) {
-		pqe := newTestPerQueryEnforcer(100.0, 5.0)
+		pqe := newTestChainedEnforcer(100.0, 5.0)
 		r := pqe.Add(cost.Cost(6.0))
 		assertLocalError(t, r.Error)
 
@@ -152,7 +121,7 @@ func TestPerQueryEnforcer_Add(t *testing.T) {
 	})
 
 	t.Run("release after local error", func(t *testing.T) {
-		pqe := newTestPerQueryEnforcer(10.0, 5.0)
+		pqe := newTestChainedEnforcer(10.0, 5.0)
 
 		// exceeds local
 		r := pqe.Add(6.0)
@@ -163,7 +132,7 @@ func TestPerQueryEnforcer_Add(t *testing.T) {
 	})
 
 	t.Run("release after global error", func(t *testing.T) {
-		pqe := newTestPerQueryEnforcer(5.0, 10.0)
+		pqe := newTestChainedEnforcer(5.0, 10.0)
 		// exceeds global
 		r := pqe.Add(6.0)
 		assertGlobalError(t, r.Error)
@@ -172,8 +141,8 @@ func TestPerQueryEnforcer_Add(t *testing.T) {
 	})
 }
 
-func TestPerQueryEnforcer_State(t *testing.T) {
-	pqe := newTestPerQueryEnforcer(10.0, 5.0)
+func TestChainedEnforcer_State(t *testing.T) {
+	pqe := newTestChainedEnforcer(10.0, 5.0)
 	pqe.Add(15.0)
 
 	r, l := pqe.State()
@@ -192,8 +161,8 @@ func newTestEnforcer(limit cost.Limit) *cost.Enforcer {
 	)
 }
 
-func newTestPerQueryEnforcer(globalLimit float64, localLimit float64) *ChainedEnforcer {
-	rtn, err := NewChainedEnforcerFromModels(
+func newTestChainedEnforcer(globalLimit float64, localLimit float64) *ChainedEnforcer {
+	rtn, err := NewChainedEnforcer(
 		"global",
 		[]cost.EnforcerIF{newTestEnforcer(cost.Limit{Threshold: cost.Cost(globalLimit), Enabled: true}),
 			newTestEnforcer(cost.Limit{Threshold: cost.Cost(localLimit), Enabled: true})})
@@ -210,16 +179,4 @@ func assertCurCost(t *testing.T, expectedCost cost.Cost, ef cost.EnforcerIF) {
 		Cost:  expectedCost,
 		Error: nil,
 	}, actual)
-}
-
-func requireGauge(t *testing.T, gauges map[string]tally.GaugeSnapshot, key string) tally.GaugeSnapshot {
-	g, ok := gauges[key]
-	require.True(t, ok, "No such gauge: %s. Gauges: %+v", key, gauges)
-	return g
-}
-
-func requireHistogram(t *testing.T, counters map[string]tally.HistogramSnapshot, key string) tally.HistogramSnapshot {
-	c, ok := counters[key]
-	require.True(t, ok, "No such counter: %s. Counters: %+v", key, counters)
-	return c
 }

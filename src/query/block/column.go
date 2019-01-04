@@ -27,6 +27,7 @@ import (
 	"github.com/m3db/m3/src/query/cost"
 	"github.com/m3db/m3/src/query/models"
 	xcost "github.com/m3db/m3/src/x/cost"
+
 	"github.com/uber-go/tally"
 )
 

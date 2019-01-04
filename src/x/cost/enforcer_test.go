@@ -205,7 +205,7 @@ func TestEnforcerClone(t *testing.T) {
 	require.Equal(t, false, limit.Enabled)
 	require.Equal(t, newThreshold, limit.Threshold)
 
-	limit = clone.Limit()
+	limit = clone.(*Enforcer).Limit()
 	require.Equal(t, false, limit.Enabled)
 	require.Equal(t, newThreshold, limit.Threshold)
 }

@@ -22,37 +22,21 @@
 package cost
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/m3db/m3/_tools/src/github.com/fossas/fossa-cli/errors"
 	"github.com/m3db/m3/src/x/cost"
-	"github.com/m3db/m3x/instrument"
-
-	"github.com/uber-go/tally"
 )
 
 const (
-	BlockLevel  = "block"
-	QueryLevel  = "query"
+	// BlockLevel identifies per-block enforcers
+	BlockLevel = "block"
+	// QueryLevel identifies per-query enforcers
+	QueryLevel = "query"
+
+	// GlobalLevel identifies global enforcers.
 	GlobalLevel = "global"
 )
-
-// PerQueryEnforcerOpts configures a PerQueryEnforcer.
-type PerQueryEnforcerOpts struct {
-	valueBuckets   tally.Buckets
-	instrumentOpts instrument.Options
-	childFactory   childFactoryFn
-}
-
-// NewPerQueryEnforcerOpts constructs a default PerQueryEnforcerOpts
-func NewPerQueryEnforcerOpts() *PerQueryEnforcerOpts {
-	return &PerQueryEnforcerOpts{}
-}
-
-func (pe PerQueryEnforcerOpts) SetChildFactory(f childFactoryFn) *PerQueryEnforcerOpts {
-	pe.childFactory = f
-	return &pe
-}
 
 // PerQueryEnforcer is a cost.EnforcerIF implementation which tracks resource usage both at a per-query and a global
 // level.
@@ -63,8 +47,8 @@ type PerQueryEnforcer interface {
 	Release()
 }
 
-type childFactoryFn func(resourceName string, parent *ChainedEnforcer) *ChainedEnforcer
-
+// ChainedEnforcer implements cost.EnforcerIF to enforce limits on multiple resources at once, linked together in a tree.
+// Child() creates a new ChainedEnforcer which rolls up into this one.
 type ChainedEnforcer struct {
 	resourceName string
 	local        cost.EnforcerIF
@@ -72,17 +56,16 @@ type ChainedEnforcer struct {
 	models       []cost.EnforcerIF
 }
 
-var noopChainedEnforcer, _ = NewChainedEnforcerFromModels("", []cost.EnforcerIF{cost.NoopEnforcer()})
+var noopChainedEnforcer, _ = NewChainedEnforcer("", []cost.EnforcerIF{cost.NoopEnforcer()})
 
-func NoopPerQueryEnforcerFactory() *ChainedEnforcer {
-	return NoopChainedEnforcer()
-}
-
+// NoopChainedEnforcer returns a ChainedEnforcer which enforces no limits and does no reporting.
 func NoopChainedEnforcer() *ChainedEnforcer {
 	return noopChainedEnforcer
 }
 
-func NewChainedEnforcerFromModels(rootResourceName string, models []cost.EnforcerIF) (*ChainedEnforcer, error) {
+// NewChainedEnforcer constructs a ChainedEnforcer which creates children using the provided models.
+// models[0] enforces this instance; models[1] enforces the first level of children, and so on.
+func NewChainedEnforcer(rootResourceName string, models []cost.EnforcerIF) (*ChainedEnforcer, error) {
 	if len(models) == 0 {
 		return nil, errors.New("must provide at least one EnforcerIF instance for a ChainedEnforcer")
 	}
@@ -95,6 +78,8 @@ func NewChainedEnforcerFromModels(rootResourceName string, models []cost.Enforce
 	}, nil
 }
 
+// Add adds the given cost both to this enforcer and any parents, working recursively until the root is reached.
+// The most local error is preferred.
 func (ce *ChainedEnforcer) Add(c cost.Cost) cost.Report {
 	if ce.parent == nil {
 		return ce.wrapLocalResult(ce.local.Add(c))
@@ -126,6 +111,7 @@ func (ce *ChainedEnforcer) wrapLocalResult(localR cost.Report) cost.Report {
 	return localR
 }
 
+// Child creates a new ChainedEnforcer whose resource consumption rolls up into this instance.
 func (ce *ChainedEnforcer) Child(resourceName string) PerQueryEnforcer {
 	// no more models; just return a noop default. TODO: this could be a panic case? Technically speaking it's
 	// misconfiguration.
@@ -141,10 +127,12 @@ func (ce *ChainedEnforcer) Child(resourceName string) PerQueryEnforcer {
 	}
 }
 
+// Clone on a ChainedEnforcer is a noop--TODO: implement?
 func (ce *ChainedEnforcer) Clone() cost.EnforcerIF {
 	return ce
 }
 
+// State returns the local state of this enforcer (ignoring anything further up the chain).
 func (ce *ChainedEnforcer) State() (cost.Report, cost.Limit) {
 	return ce.local.State()
 }

@@ -27,30 +27,28 @@ import (
 
 	"github.com/m3db/m3/src/dbnode/encoding"
 	"github.com/m3db/m3/src/dbnode/ts"
+	qcost "github.com/m3db/m3/src/query/cost"
 	"github.com/m3db/m3/src/query/test/seriesiter"
 	"github.com/m3db/m3/src/x/cost"
-	"github.com/uber-go/tally"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/uber-go/tally"
 )
 
-func newTestEnforcer(limit cost.Cost) *cost.Enforcer {
+func newTestEnforcer(limit cost.Cost) *qcost.ChainedEnforcer {
 	limitObj := cost.Limit{Threshold: limit, Enabled: true}
-	return cost.NewEnforcer(
+	rtn, err := qcost.NewChainedEnforcer("block", []cost.EnforcerIF{cost.NewEnforcer(
 		cost.NewStaticLimitManager(cost.NewLimitManagerOptions().SetDefaultLimit(limitObj)),
 
 		cost.NewTracker(),
 		nil,
-	)
-}
-
-func newSimpleLimit(c cost.Cost) cost.Limit {
-	return cost.Limit{
-		Threshold: c,
-		Enabled:   true,
+	)})
+	if err != nil {
+		panic(err.Error())
 	}
+	return rtn
 }
 
 // copied from query/cost ; factor out if needed.
@@ -64,7 +62,7 @@ func assertCurCost(t *testing.T, expectedCost cost.Cost, ef cost.EnforcerIF) {
 
 type accountedSeriesIterSetup struct {
 	Ctrl     *gomock.Controller
-	Enforcer *cost.Enforcer
+	Enforcer *qcost.ChainedEnforcer
 	Iter     *AccountedSeriesIter
 }
 
@@ -112,7 +110,7 @@ func TestAccountedSeriesIter_Next(t *testing.T) {
 		require.NoError(t, iter.Err())
 
 		iter.Next()
-		require.EqualError(t, iter.Err(), "2 exceeds limit of 2")
+		require.EqualError(t, iter.Err(), "exceeded block limit: 2 exceeds limit of 2")
 	})
 
 	t.Run("returns false after enforcer error", func(t *testing.T) {
@@ -122,7 +120,7 @@ func TestAccountedSeriesIter_Next(t *testing.T) {
 		iter.Next()
 		iter.Next()
 
-		require.EqualError(t, iter.Err(), "2 exceeds limit of 2")
+		require.EqualError(t, iter.Err(), "exceeded block limit: 2 exceeds limit of 2")
 
 		assert.False(t, iter.Next())
 		assert.True(t, iter.SeriesIterator.Next())
@@ -154,6 +152,19 @@ func TestAccountedSeriesIter_Err(t *testing.T) {
 	t.Run("returns enforcer error", func(t *testing.T) {
 		setup := setupAccountedSeriesIter(t, 3, 1)
 		setup.Iter.Next()
-		assert.EqualError(t, setup.Iter.Err(), "1 exceeds limit of 1")
+		assert.EqualError(t, setup.Iter.Err(), "exceeded block limit: 1 exceeds limit of 1")
+	})
+}
+
+func TestAccountedSeriesIter_Close(t *testing.T) {
+	t.Run("releases enforcer and closes underlying iter", func(t *testing.T) {
+		setup := setupAccountedSeriesIter(t, 3, 5)
+		assert.True(t, setup.Iter.Next())
+		require.NoError(t, setup.Iter.Err())
+
+		assertCurCost(t, 1, setup.Enforcer)
+		setup.Iter.Close()
+
+		assertCurCost(t, 0, setup.Enforcer)
 	})
 }

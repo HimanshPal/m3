@@ -23,6 +23,7 @@ package models
 
 import (
 	"github.com/m3db/m3/src/query/cost"
+
 	"github.com/uber-go/tally"
 )
 
@@ -41,6 +42,7 @@ func NewQueryContext(scope tally.Scope, enforcer cost.PerQueryEnforcer) *QueryCo
 	}
 }
 
+// NoopQueryContext returns a query context with no active components.
 func NoopQueryContext() *QueryContext {
 	return NewQueryContext(tally.NoopScope, cost.NoopChainedEnforcer())
 }
